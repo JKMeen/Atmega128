@@ -1,0 +1,378 @@
+#include <mega128.h>      
+#include <delay.h>
+
+typedef unsigned char u_char;
+
+flash u_char seg_pat[10]= {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+
+u_char  N1 = 0, N10 = 0, N100 = 2, N1000 = 1;  
+u_char  pos = 0;            // 0 : 1자리, 1 : 10자리 , 2 : 100자리 , 3 : 1000자리   
+u_char  hour=12, min=0, sec = 0;    // 시계의 변수
+u_char  msec=0,hold=1;              //시계의 msec변수
+u_char  a_hour=12, a_min=1;  // 알람의 변수
+u_char  m_sec=0, m_msec= 0;     // 타이머의 변수
+u_char  s_sec=0, s_msec= 0;     // 스톱워치의 변수
+
+int a;
+
+void timeset(void);//시간표시
+void time_set2(void);//시간표시2
+void time_set3(void);
+void sw_1(void);//시간증가
+void sw_2(void);//왼쪽이동
+void sw_3(void);//타이머의 시간 증가
+void time(void);//시계
+void stopwatch(void);//스톱워치
+void timer(void);//타이머
+void arr(void); //알람
+void timeset4(void);  //알람시간표시
+void sw_4(void);  //알람시간증가 
+
+
+void main(void){
+
+    u_char old_sw,sw;
+
+    DDRB = 0xF0;                // 포트 B 상위 4비트 출력 설정
+    DDRD = 0xF0;                // 포트 D 상위 4비트 출력 설정
+    DDRG = 0x0F;                // 포트 G 하위 4비트 출력 설정
+    DDRE = 0x0;                // 포트 E 입력 설정   
+    PORTB = 0x0;               //E.F.G.DP off 
+    PORTD = 0x0;                  // A.B.C.D off
+    
+    old_sw=PINE&0b11110000;
+    
+     while(1)
+    {   
+        sw=PINE&0b11110000;
+        if(sw==old_sw)continue;
+        if(old_sw==0b11110000&&sw==0b11100000) a=1;
+        if(old_sw==0b11110000&&sw==0b11010000) a=2;
+        if(old_sw==0b11110000&&sw==0b10110000) a=3;
+        if(old_sw==0b11110000&&sw==0b01110000) a=4;
+
+        switch(a)
+        {
+         case 1: stopwatch(); break;//스톱워치일때
+         case 2: timer(); break;//타이머일때
+         case 3: time(); break;//시계일때
+         case 4: arr(); break; //알람설정일때 
+         //lcd는초기설정
+        }
+
+    }
+
+}
+
+void time() //시계+알람기능 추가
+{
+    u_char old_sw,sw,n;
+    int b=0;
+              
+    DDRC = 0xFF;                /*포트C출력설정 (이걸로)*/
+    DDRB = 0xF0;                // 포트 B 상위 4비트 출력 설정
+    DDRD = 0xF0;                // 포트 D 상위 4비트 출력 설정
+    DDRG = 0x0F;                // 포트 G 하위 4비트 출력 설정
+    DDRE = 0x0;                // 포트 E 입력 설정   
+    PORTB = 0x0;               //E.F.G.DP off 
+    PORTD = 0x0;                  // A.B.C.D off       
+    
+    PORTC = 0xFF;    
+    
+    old_sw = PINE&0b11110000;  
+    
+    while(1){
+                    
+            for(n=0;n<10;n++)
+            {
+                 timeset();
+
+                 sw=PINE&0b11110000;
+                 if(sw==old_sw)continue;
+
+                 if(old_sw==0b11110000&&sw==0b11100000)sw_1();         //시계시간설정
+                 else if(old_sw==0b11110000&&sw==0b11010000)sw_2();    //시계왼쪽
+                 else if(old_sw==0b11110000&&sw==0b10110000){ hour=12; min=0; }   //알람시간리셋
+                 else if(old_sw==0b11110000&&sw==0b01110000){ a=4; arr(); break;}    //기능변경
+                 old_sw=sw;
+            }  
+                 sec++;   
+                 if(sec==60){
+                  sec=0;
+                  min++;
+                  if(min==60){
+                    min=0;                                               
+                    hour++;
+                    if(hour==24)hour=0;
+                  }
+                 }
+                  if(hour==a_hour && min==a_min){ PORTC=0; }
+                  else if(hour!=a_hour || min!=a_min) { PORTC=0xFF; }    
+    } 
+}
+
+
+void stopwatch(void)//스톱워치
+{
+  u_char old_sw,sw;
+  DDRB=0xF0; DDRD=0xF0; DDRG=0x0F;
+  DDRC = 0xFF;                /*포트C출력설정 (이걸로)*/
+  PORTC = 0xFF;
+  
+  old_sw=PINE&0b11110000;
+  while(1){
+    time_set2();
+    if(hold==0){
+      if(++s_msec>99){ s_msec=0; if(++s_sec>99)s_sec=0; }
+    }
+    //
+    sw=PINE&0b11110000;
+    if(sw==old_sw)continue;
+    if     (old_sw==0b11110000&&sw==0b11100000)hold^=1;     //stop.start
+    else if(old_sw==0b11110000&&sw==0b11010000){ s_sec=s_msec=0; hold=1; }   //reset
+    else if(old_sw==0b11110000&&sw==0b10110000){ time(); break; }    //시계기능으로 이동
+    else if(old_sw==0b11110000&&sw==0b01110000){ timer(); break; }    //시계기능으로 이동
+    old_sw=sw;
+  }
+}
+
+
+void timer(void)//타이머
+{
+  u_char old_sw,sw;
+  DDRB=0xF0; DDRD=0xF0; DDRG=0x0F;
+  DDRC = 0xFF;                /*포트C출력설정 (이걸로)*/
+  PORTC = 0xFF;  
+  old_sw=PINE&0b11110000;
+    m_msec=0, m_sec=1;
+    while(1){
+    time_set3();
+    if(hold==0){
+    if(m_sec!=0){
+        if(--m_msec<1){ m_msec=99; m_sec--;}    
+    }
+    else if(m_sec==0){
+        if(--m_msec<1){ if(m_msec==0||m_sec==0){PORTC=0; break;} }
+    }
+    }
+    
+    sw=PINE&0b11110000;
+    if(sw==old_sw)continue;
+    
+    if(old_sw==0b11110000&&sw==0b11100000)sw_3();
+    else if(old_sw==0b11110000&&sw==0b11010000)sw_2();
+    else if(old_sw==0b11110000&&sw==0b10110000)hold^=1;     //stop.start
+    else if(old_sw==0b11110000&&sw==0b01110000){ m_sec=0; m_msec=0; hold=1; stopwatch(); break; }   //reset , 스탑원치로 기능 변경
+    old_sw=sw; 
+    }
+}
+
+
+
+void arr() //알람
+{
+    u_char old_sw,sw,n;
+    int b=0;                                              
+    
+    DDRC = 0xFF;                /*포트C출력설정 (이걸로)*/          
+    DDRB = 0xF0;                // 포트 B 상위 4비트 출력 설정
+    DDRD = 0xF0;                // 포트 D 상위 4비트 출력 설정
+    DDRG = 0x0F;                // 포트 G 하위 4비트 출력 설정
+    DDRE = 0x0;                // 포트 E 입력 설정   
+    PORTB = 0x0;               //E.F.G.DP off 
+    PORTD = 0x0;                  // A.B.C.D off       
+    PORTC = 0xFF;                // 알람불빛 기능 off
+    
+    old_sw = PINE&0b11110000;  
+    
+    while(1){
+              timeset4();
+
+              sw=PINE&0b11110000;
+                 if(old_sw==0b11110000&&sw==0b11100000)sw_4();         //시계시간설정
+                 else if(old_sw==0b11110000&&sw==0b11010000)sw_2();    //시계왼쪽
+                 else if(old_sw==0b11110000&&sw==0b10110000){ stopwatch(); break; }    //스탑워치
+                 else if(old_sw==0b11110000&&sw==0b01110000){ a_hour=12; a_min=1; }   //알람시간 리셋
+                 old_sw=sw;
+    }
+}
+
+
+
+void timeset() //시간표시 (시계)
+{
+ int i;
+ u_char old_sw,sw;
+ 
+ N1000=hour/10;   //시간10
+ N100=hour%10;   //시간1
+ N10=min/10;    //분10
+ N1=min%10;    //분1
+ 
+  for(i=0;i<5;i++){
+
+    PORTG = 0b00001000;         // 7-Seg DIG4 ON(PG3=1), 분 1자리 표시
+    PORTD = ((seg_pat[min % 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[min % 10] & 0x70 ) | (PORTB & 0x0F);
+    delay_ms(5);
+             
+    PORTG = 0b00000100;         // 7-Seg DIG3 ON(PG2=1), 분 10자리 표시
+    PORTD = ((seg_pat[min / 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[min / 10] & 0x70 ) | (PORTB & 0x0F);            
+    delay_ms(5);                          
+    
+    PORTG = 0b00000010;         // 7-Seg DIG2 ON(PG1=1), 시간 1자리 표시
+    PORTD = ((seg_pat[hour % 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[hour % 10] & 0x70 ) | (PORTB & 0x0F);      
+    delay_ms(5);
+             
+    PORTG = 0b00000001;         // 7-Seg DIG1 ON(PG0=1), 시간 10자리 표시
+    PORTD = ((seg_pat[hour / 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[hour / 10] & 0x70 ) | (PORTB & 0x0F);            
+    delay_ms(5); 
+    }  
+    
+       
+    sw=PINE&0b11110000;
+    //if(sw==old_sw)continue;
+    if(old_sw==0b11110000&&sw==0b11100000)sw_1();
+    if(old_sw==0b11110000&&sw==0b11010000)sw_2();
+}
+
+
+
+
+void time_set2() //시간표시2 (스톱워치)
+{
+ u_char pd,pb,seg;
+ pd=PORTD&0x0F; pb=PORTB&0x0F;  
+ //0x00001234 1맨오른쪽 4맨왼쪽
+ PORTG=0x08; seg=seg_pat[s_msec%10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+ PORTG=0x04; seg=seg_pat[s_msec/10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+ PORTG=0x02; seg=seg_pat[s_sec %10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+ PORTG=0x01; seg=seg_pat[s_sec /10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+}
+
+
+
+void time_set3() //시간표시3 (타이머)
+{
+ u_char pd,pb,seg;
+ pd=PORTD&0x0F; pb=PORTB&0x0F;  
+ //0x00001234 1맨오른쪽 4맨왼쪽
+ PORTG=0x08; seg=seg_pat[m_msec%10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+ PORTG=0x04; seg=seg_pat[m_msec/10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+ PORTG=0x02; seg=seg_pat[m_sec %10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+ PORTG=0x01; seg=seg_pat[m_sec /10]; PORTD=((seg&0x0F)<<4)|pd; PORTB=(seg&0x70)|pb; delay_us(2500);
+}
+
+
+
+void sw_1()//시간증가역할
+{
+    N1 = min % 10;                          // 현재 분 1자리 추출
+    N10 = min / 10;                         // 현재 분 10자리 추출
+    N100 = hour % 10;                       // 현재 시간 1자리 추출
+    N1000 = hour / 10;                      // 현재 시간 10자리 추출
+   
+    if(pos == 0) N1 = (N1 + 1) % 10;        // 분 1단위 +1
+    else if(pos == 1) N10 = (N10 + 1) % 6;  // 분 10단위 +1
+    else if(pos == 2){                      // 시간 1단위 +1
+        if(N1000 == 2) N100 = (N100 + 1) % 4;
+        else N100 = (N100 + 1) % 10;         
+    }
+    else {                                  // 시간 10단위 +1
+        if(N100 >= 4) N1000 = (N1000 + 1) % 2;  
+        else N1000 = (N1000 + 1) % 3;
+    }
+     
+    hour = N1000 * 10 + N100;       // 시간 계산
+    min = N10 * 10 + N1;            // 분 계산  
+}
+
+
+void sw_2()//왼쪽으로 이동역할
+{
+ pos=(pos+1)%4;
+}
+
+
+void sw_3()//시간증가역할(타이머)
+{
+    N1 = m_msec % 10;                          // 현재 msec 1자리 추출
+    N10 = m_msec / 10;                         // 현재 msec 10자리 추출
+    N100 = m_sec % 10;                       // 현재 sec 1자리 추출
+    N1000 = m_sec / 10;                      // 현재 sec 10자리 추출
+   
+    if(pos == 0) N1 = (N1 + 1) % 10;        // msec 1단위 +1
+    else if(pos == 1) N10 = (N10 + 1) % 10;  // msec 10단위 +1
+    else if(pos == 2){                      // sec 1단위 +1
+        if(N1000 == 2) N100 = (N100 + 1) % 4;
+        else N100 = (N100 + 1) % 10;         
+    }
+    else {                                  // 시간 10단위 +1
+        if(N100 >= 4) N1000 = (N1000 + 1) % 60;  
+        else N1000 = (N1000 + 1) % 6;
+    }
+     
+    m_sec = N1000 * 10 + N100;       // 시간 계산
+    m_msec = N10 * 10 + N1;            // 분 계산  
+}
+
+
+void timeset4() //시간표시 (알람시계)
+{
+ int i;
+ u_char old_sw,sw;
+ 
+ N1000=a_hour/10;   //시간10
+ N100=a_hour%10;   //시간1
+ N10=a_min/10;    //분10
+ N1=a_min%10;    //분1
+ 
+  for(i=0;i<5;i++){
+
+    PORTG = 0b00001000;         // 7-Seg DIG4 ON(PG3=1), 분 1자리 표시
+    PORTD = ((seg_pat[a_min % 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[a_min % 10] & 0x70 ) | (PORTB & 0x0F);
+    delay_ms(5);
+             
+    PORTG = 0b00000100;         // 7-Seg DIG3 ON(PG2=1), 분 10자리 표시
+    PORTD = ((seg_pat[a_min / 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[a_min / 10] & 0x70 ) | (PORTB & 0x0F);            
+    delay_ms(5);                          
+    
+    PORTG = 0b00000010;         // 7-Seg DIG2 ON(PG1=1), 시간 1자리 표시
+    PORTD = ((seg_pat[a_hour % 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[a_hour % 10] & 0x70 ) | (PORTB & 0x0F);      
+    delay_ms(5);
+             
+    PORTG = 0b00000001;         // 7-Seg DIG1 ON(PG0=1), 시간 10자리 표시
+    PORTD = ((seg_pat[a_hour / 10] & 0x0F) << 4) | (PORTD & 0x0F);
+    PORTB = (seg_pat[a_hour / 10] & 0x70 ) | (PORTB & 0x0F);            
+    delay_ms(5); 
+    }  
+}
+
+
+void sw_4()//시간증가역할(알람)
+{
+    N1 = a_min % 10;                          // 현재 분 1자리 추출
+    N10 = a_min / 10;                         // 현재 분 10자리 추출
+    N100 = a_hour % 10;                       // 현재 시간 1자리 추출
+    N1000 = a_hour / 10;                      // 현재 시간 10자리 추출
+   
+    if(pos == 0) N1 = (N1 + 1) % 10;        // 분 1단위 +1
+    else if(pos == 1) N10 = (N10 + 1) % 6;  // 분 10단위 +1
+    else if(pos == 2){                      // 시간 1단위 +1
+        if(N1000 == 2) N100 = (N100 + 1) % 4;
+        else N100 = (N100 + 1) % 10;         
+    }
+    else {                                  // 시간 10단위 +1
+        if(N100 >= 4) N1000 = (N1000 + 1) % 2;  
+        else N1000 = (N1000 + 1) % 3;
+    }
+     
+    a_hour = N1000 * 10 + N100;       // 시간 계산
+    a_min = N10 * 10 + N1;            // 분 계산  
+}
